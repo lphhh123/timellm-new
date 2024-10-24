@@ -1,0 +1,55 @@
+# 忽略所有的 Python 编译文件
+__pycache__/
+*.py[cod]
+
+# 忽略特定的 JSON 配置文件（如果不需要跟踪）
+*.json
+gpt2/onnx/onnx_config.json
+ds_config_zero2.json
+
+# 虚拟环境
+venv/
+env/
+.venv/
+
+# PyTorch 模型文件
+*.pth
+*.pt
+
+# TensorBoard 日志
+runs/
+events.out.tfevents.*
+
+# 模型检查点
+checkpoints/
+
+# 数据集
+dataset/
+gpt2/
+
+# 图像和图表
+figures/
+
+# IDE 配置文件
+.idea/
+.vscode/
+
+# 日志文件
+*.log
+
+# 依赖包文件
+*.egg-info/
+dist/
+build/
+
+data_provider_pretrain/
+scripts/
+*.md
+*.txt
+
+# Jupyter Notebook 检查点
+.ipynb_checkpoints/
+
+# 环境文件
+.env
+*.env
