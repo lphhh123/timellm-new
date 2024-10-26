@@ -13,8 +13,7 @@ warnings.filterwarnings('ignore')
 
 class Dataset_IMU(Dataset):
     def __init__(self, root_path, label_dict, flag='train', size=None,
-                 features='S', data_path='all_acc_gyro.csv',
-                 target='acc_x', scale=True, timeenc=0, freq='h', percent=100,
+                 features='S', scale=True, timeenc=0, freq='h', percent=100,
                  seasonal_patterns=None):
 
         if size == None:
@@ -25,19 +24,10 @@ class Dataset_IMU(Dataset):
             self.seq_len = size[0]
             self.label_len = size[1]
             self.pred_len = size[2]
-        # init 选择数据集范围
-        assert flag in ['train', 'test', 'val']
-        type_map = {'train': 0, 'val': 1, 'test': 2}
-        self.set_type = type_map[flag]
-
-        # 选择预测特征
-        assert target in ['acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z']
-        type_TagertMap = {'acc_x': 0, 'acc_y': 1, 'acc_z': 2, 'gyro_x': 3, 'gyro_y': 4, 'gyro_z': 5}
-        self.set_TargetType = type_TagertMap[target]
+        
 
         self.percent = percent
         self.features = features
-        self.target = target
         self.scale = scale
         self.timeenc = timeenc
         self.freq = freq
@@ -45,73 +35,44 @@ class Dataset_IMU(Dataset):
 
         # self.percent = percent
         self.root_path = root_path
-        self.data_path = data_path
+        self.flag = flag
         self.label_dict = label_dict
         self.__read_data__()
 
-        # self.enc_in = self.data_x.shape[-1]
-        # self.tot_len = len(self.data_x) - self.seq_len - self.pred_len + 1    # 不跳步
+        
         self.tot_len = (len(self.data_x) - self.seq_len - self.pred_len)//self.stride + 1      # 跳步
-
 
 
     def __read_data__(self):
         self.scaler = StandardScaler()
-        df_raw = pd.read_csv(os.path.join(self.root_path,
-                                          self.data_path))
-        border1s = [0, 22044 - self.seq_len, 33064 - self.seq_len]
-        border2s = [22044, 33064, 55104]
-
-        border1 = border1s[self.set_type]
-        border2 = border2s[self.set_type]
-
-        if self.set_type == 0:
-            border2 = (border2 - self.seq_len) * self.percent // 100 + self.seq_len
-
-        # 提取时序数据
-        if self.features == 'M' or self.features == 'MS':
-            # cols_data = df_raw.columns[1:]
-            cols_data = df_raw.columns[:-1]
-            df_data = df_raw[cols_data]
-        elif self.features == 'S':
-            df_data = df_raw[[self.target]]
-        # df_data = df_raw[[self.target]]
-
+        df_raw = pd.read_csv(self.root_path)
+       
+        cols_data = df_raw.columns[:-1]
+        df_data = df_raw[cols_data]
 
         # 提取label以及完成string->数字映射
-        df_dataLabel = df_raw[['label']]
+        # df_dataLabel = df_raw[['label']]
+        df_dataLabel = df_raw.iloc[:,-1]
         df_dataLabel = encode_labels(self.label_dict, df_dataLabel)
-        data_label = df_dataLabel.values
+        data_label = df_dataLabel.values.reshape(-1, 1)
 
-        
         
         # 对时序数据进行处理：acc_y +9.796 和 标准化
         # 将 DataFrame 转换为 NumPy 数组，对第2列 (acc_y) 执行 +9.796 操作
         data = df_data.values
         data[:, 1] += 9.796
         if self.scale:
-            train_data = data[border1s[0]:border2s[0]]
+            train_data = data
             self.scaler.fit(train_data)
             data = self.scaler.transform(data)        
 
         
-        self.data_x = data[border1:border2]
-        self.data_y = data[border1:border2]
-        self.data_label = data_label[border1:border2]
+        self.data_x = data
+        self.data_y = data
+        self.data_label = data_label
 
 
     def __getitem__(self, index):
-        # # feat_id = index // self.tot_len
-        # feat_id = 0
-        # s_begin = (index % self.tot_len) * self.stride
-        # s_end = s_begin + self.seq_len
-        # r_begin = s_end - self.label_len
-        # r_end = r_begin + self.label_len + self.pred_len
-        # seq_x = self.data_x[s_begin:s_end, feat_id:feat_id + 1]
-        # seq_y = self.data_y[r_begin:r_end, feat_id:feat_id + 1]
-        # seq_x_label = self.data_label[s_begin:s_end]
-
-
         s_begin = (index % self.tot_len) * self.stride
         s_end = s_begin + self.seq_len
         r_begin = s_end - self.label_len
@@ -125,16 +86,7 @@ class Dataset_IMU(Dataset):
         return seq_x, seq_y, seq_x_label, seq_y_label
 
     def __len__(self):
-        # return (len(self.data_x) - self.seq_len - self.pred_len + 1) * self.enc_in
         return (len(self.data_x) - self.seq_len - self.pred_len) // self.stride +1
-
-
-    def inverse_transform(self, data):
-        return self.scaler.inverse_transform(data)
-    def __len__(self):
-        # return (len(self.data_x) - self.seq_len - self.pred_len + 1) * self.enc_in
-        # return (len(self.data_x) - self.seq_len - self.pred_len + 1) * self.enc_in// self.stride  # 多通道
-        return (len(self.data_x) - self.seq_len - self.pred_len + 1) // self.stride   # 单通道
 
 
     def inverse_transform(self, data):

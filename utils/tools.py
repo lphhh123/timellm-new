@@ -192,26 +192,29 @@ def vali(args, accelerator, model, vali_loader, criterion):
             #  使用 .detach() 从计算图中分离预测和真实标签，以避免在损失计算时进行梯度计算。
             pred = outputs.detach()
             true = batch_y.detach()
-
+            
+            # 输出序列的L1损失
             loss = criterion(pred, true)
+            total_loss.append(loss.item())
+            # 输出序列的label损失
             label_loss = loss_func(y_hat, x_label_one_hot)
-
+            label_total_loss.append(label_loss.item())
+            # 输入序列的label损失
             enc_loss = loss_func(y_enc, yy_lable_one_hot)
             enc_total_loss.append(enc_loss.item())
 
             # mae_loss = mae_metric(pred, true)
-
-            total_loss.append(loss.item())
-            label_total_loss.append(label_loss.item())
             # total_mae_loss.append(mae_loss.item())
-
-    total_loss = np.average(total_loss) + np.average(label_total_loss) + np.average(enc_total_loss)
+    avg_loss = np.average(total_loss)
+    avg_label_loss = np.average(label_total_loss)
+    avg_enc_total_loss = np.average(enc_total_loss)
+    total_loss = avg_loss + avg_label_loss + avg_enc_total_loss
     
     # total_mae_loss = np.average(total_mae_loss)
 
     model.train()
     # return total_loss, total_mae_loss
-    return total_loss
+    return total_loss, avg_loss, avg_label_loss, avg_enc_total_loss
 
 
 def test(args, accelerator, model, train_loader, vali_loader, criterion):

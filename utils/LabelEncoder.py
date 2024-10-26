@@ -9,7 +9,8 @@ def encode_labels(label_dict, df_dataLabel):
         label_dict = json.load(f)
 
     # 使用自定义的字典进行标签编码
-    df_dataLabel['label'] = df_dataLabel['label'].apply(lambda x: label_dict.get(x, -1))
+    # df_dataLabel['label'] = df_dataLabel['label'].apply(lambda x: label_dict.get(x, -1))
+    df_dataLabel = df_dataLabel.apply(lambda x: label_dict.get(x, -1))
     return df_dataLabel
 
 

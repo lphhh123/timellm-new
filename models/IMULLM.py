@@ -50,7 +50,6 @@ class Model(nn.Module):
         self.d_llm = configs.llm_dim
         self.patch_len = configs.patch_len
         self.stride = configs.stride
-        self.target = configs.target
         self.label_dict = configs.label_dict
         self.gpt2_path = configs.gpt2_path
         self.d_model = configs.d_model
@@ -231,8 +230,22 @@ class Model(nn.Module):
         return None
 
     def forecast(self, x_enc, x_dec, x_label, y_label, label_dict):
-        assert x_enc.shape[1] == self.intime_len, "输入数据的时间步必须等于模型定义的时间步"
+        """
+        x_enc:      输入序列
+        x_label:    输入序列的label
+        y_label:    输出序列的groundtruth label
+        label_dict: label的映射字典
 
+        y_enc:      输入序列的分类结果
+        dec_out:    预测的输出序列
+        y_hat:      输出序列经过分类器得到的分类结果
+        x_lable_one_hot:  输出序列label的ground truth得到的分类结果
+        y_enc:      输入序列经过分类器得到的分类结果
+        yy_lable_one_hot: 输入序列label的ground truth得到的分类结果
+        """
+        assert x_enc.shape[1] == self.intime_len, "输入数据的时间步必须等于模型定义的时间步"
+        
+        # 对输入序列进行分类
         y_enc = self.classifier_two(x_enc)
 
         # 记录x_enc初始维度
@@ -255,16 +268,18 @@ class Model(nn.Module):
         #  (BL, TL, NL) -> (BL, NL, TL)->(BL*NL, TL, 1)
         x_label = x_label.permute(0, 2, 1).contiguous().reshape(BL * NL, TL, 1)
 
+        # 输出序列的 groundtruth_label转为one_hot
         x_lable_one_hot = y_label.squeeze(-1)
         # x_lable_one_hot.shape batch_size * time * 224
         x_lable_one_hot = x_lable_one_hot.to(torch.int64)
-        x_lable_one_hot = F.one_hot(x_lable_one_hot, num_classes=self.class_nums)   # todo num_classes硬编码
+        x_lable_one_hot = F.one_hot(x_lable_one_hot, num_classes=self.class_nums)   
         # x_lable_one_hot.shape batch_size * (time * 224)
         x_lable_one_hot = x_lable_one_hot.view(-1, self.outtime_len * self.class_nums)
-
+        
+        # 输入序列的 groundtruth_label转为one_hot
         yy_lable_one_hot = x_label.squeeze(-1)
         yy_lable_one_hot = yy_lable_one_hot.to(torch.int64)
-        yy_lable_one_hot = F.one_hot(yy_lable_one_hot, num_classes=self.class_nums)   # todo num_classes硬编码
+        yy_lable_one_hot = F.one_hot(yy_lable_one_hot, num_classes=self.class_nums)   
         yy_lable_one_hot = yy_lable_one_hot.view(-1, self.intime_len * self.class_nums)
         
 
@@ -323,6 +338,7 @@ class Model(nn.Module):
         # dec_out.shape batch_size * T * 6
         dec_out = self.normalize_layers(dec_out, 'denorm')
         
+        # 分类输出序列的label
         y_hat = self.classifier(dec_out)
         y_hat = y_hat.view(-1, self.class_nums)
         # y_hat.shape (batch_size * time) * 224
@@ -330,6 +346,7 @@ class Model(nn.Module):
         # y_hat.shape batch_size * (time * 224)
         y_hat = y_hat.view(-1, self.outtime_len * self.class_nums)
 
+        # 分类输入序列的label
         y_enc = y_enc.view(-1, self.class_nums)
         y_enc = torch.sigmoid(y_enc)
         y_enc = y_enc.view(-1, self.intime_len * self.class_nums)

@@ -1,5 +1,6 @@
 from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4, Dataset_IMU
 from torch.utils.data import DataLoader
+import os
 
 data_dict = {
     'ETTh1': Dataset_ETT_hour,
@@ -10,7 +11,7 @@ data_dict = {
     'Traffic': Dataset_Custom,
     'Weather': Dataset_Custom,
     'm4': Dataset_M4,
-    'imu01': Dataset_IMU,
+    'IMU': Dataset_IMU,
 }
 
 
@@ -51,7 +52,7 @@ def data_provider(args, flag):
             flag=flag,
             size=[args.seq_len, args.label_len, args.pred_len],
             features=args.features,
-            target=args.target,
+
             timeenc=timeenc,
             freq=freq,
             percent=percent,
@@ -64,3 +65,57 @@ def data_provider(args, flag):
         num_workers=args.num_workers,
         drop_last=drop_last)
     return data_set, data_loader
+
+def imudata_provider(args, f, flag):
+    Data = data_dict[args.data]
+    timeenc = 0 if args.embed != 'timeF' else 1
+    percent = args.percent
+    root_path = args.root_path
+    f_path = os.path.join(root_path, flag, f)
+
+
+    if flag == 'test':
+        shuffle_flag = False
+        drop_last = True
+        batch_size = args.batch_size
+        freq = args.freq
+    else:
+        shuffle_flag = True
+        drop_last = True
+        batch_size = args.batch_size
+        freq = args.freq
+
+    data_set = Data(
+            root_path=f_path,
+            label_dict=args.label_dict,
+            flag=flag,
+            size=[args.seq_len, args.label_len, args.pred_len],
+            features=args.features,
+            timeenc=timeenc,
+            freq=freq,
+            percent=percent,
+            seasonal_patterns=args.seasonal_patterns
+        )
+    data_loader = DataLoader(
+        data_set,
+        batch_size=batch_size,
+        shuffle=shuffle_flag,
+        num_workers=args.num_workers,
+        drop_last=drop_last)
+    return data_set, data_loader
+
+def get_session(args, flag):
+    parent_path = args.root_path
+    dict_path = os.path.join(parent_path, flag)
+    file_list = os.listdir(dict_path)
+    file_list = [f for f in file_list if os.path.isfile(os.path.join(dict_path, f))]
+    data_list = []
+    loader_list = []
+    for f in file_list:
+        # path = os.path.join(dict_path, f)
+        test_data, test_loader = imudata_provider(args, f, flag)
+        data_list.append(test_data)
+        loader_list.append(test_loader)
+        data_list.append(test_data)
+
+    return data_list, loader_list
