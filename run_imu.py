@@ -191,6 +191,7 @@ if __name__ == "__main__":
         #     train_loader, vali_loader, test_loader, model, model_optim, scheduler)
         train_loader_list, test_loader_list, model, model_optim, scheduler = accelerator.prepare(
                 train_loader_list, test_loader_list, model, model_optim, scheduler)
+        
 
         if args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
@@ -203,98 +204,108 @@ if __name__ == "__main__":
 
             model.train()
             epoch_time = time.time()
-            for i in range(len(train_loader_list)):
-              train_loader = train_loader_list[i]
-              print("***************************处理第{}个train_loader*******************************".format(i))
-              for i, (batch_x, batch_y, batch_x_label, batch_y_label) in tqdm(enumerate(train_loader)):
-                  # if i % 50 == 0:
-                  #   print("Epoch {} iter {}".format(epoch, i))
-                  iter_count += 1
-                  model_optim.zero_grad()
+            for k in range(len(train_loader_list)):
+              if k == 40:
+                  continue
+              train_loader = train_loader_list[k]
+              print("***************************处理第{}个train_loader*******************************".format(k))
 
-                  batch_x = batch_x.float().to(accelerator.device)
-                  batch_y = batch_y.float().to(accelerator.device)
-                  batch_x_label = batch_x_label.to(accelerator.device)
-                  batch_y_label = batch_y_label.to(accelerator.device)
+              try:
 
-                  # decoder input
-                  # dec_inp: 创建一个与预测长度相同的全零张量，用于解码器输入。
-                  dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :]).float().to(
-                      accelerator.device)
-                  # 将真实标签的前 label_len 个时间步与全零张量拼接，以形成解码器的输入。
-                  dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(
-                      accelerator.device)
+                for i, (batch_x, batch_y, batch_x_label, batch_y_label) in tqdm(enumerate(train_loader)):
+                    # if i % 50 == 0:
+                    #   print("Epoch {} iter {}".format(epoch, i))
+                    iter_count += 1
+                    model_optim.zero_grad()
 
-                  # encoder - decoder
-                  if args.use_amp:
-                      with torch.cuda.amp.autocast():
-                          if args.output_attention:
-                              outputs, y_hat, x_label_one_hot, y_enc, yy_lable_one_hot = model(batch_x, dec_inp, batch_x_label, batch_y_label)[0]
-                          else:
-                              outputs, y_hat, x_label_one_hot, y_enc, yy_lable_one_hot = model(batch_x, dec_inp, batch_x_label, batch_y_label)
+                    batch_x = batch_x.float().to(accelerator.device)
+                    batch_y = batch_y.float().to(accelerator.device)
+                    batch_x_label = batch_x_label.to(accelerator.device)
+                    batch_y_label = batch_y_label.to(accelerator.device)
 
-                          f_dim = -1 if args.features == 'MS' else 0
-                          outputs = outputs[:, -args.pred_len:, f_dim:]
-                          batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)
+                    # decoder input
+                    # dec_inp: 创建一个与预测长度相同的全零张量，用于解码器输入。
+                    dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :]).float().to(
+                        accelerator.device)
+                    # 将真实标签的前 label_len 个时间步与全零张量拼接，以形成解码器的输入。
+                    dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(
+                        accelerator.device)
 
-                          seq_loss = criterion(outputs, batch_y)
-                          train_loss.append(seq_loss.item())
+                    # encoder - decoder
+                    if args.use_amp:
+                        with torch.cuda.amp.autocast():
+                            if args.output_attention:
+                                outputs, y_hat, x_label_one_hot, y_enc, yy_lable_one_hot = model(batch_x, dec_inp, batch_x_label, batch_y_label)[0]
+                            else:
+                                outputs, y_hat, x_label_one_hot, y_enc, yy_lable_one_hot = model(batch_x, dec_inp, batch_x_label, batch_y_label)
 
-                          label_loss = loss_func(y_hat, x_label_one_hot)
-                          label_train_loss.append(label_loss.item())
+                            f_dim = -1 if args.features == 'MS' else 0
+                            outputs = outputs[:, -args.pred_len:, f_dim:]
+                            batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)
 
-                          enc_loss = loss_func(y_enc, yy_lable_one_hot)
-                          enc_train_loss.append(enc_loss.item())
+                            seq_loss = criterion(outputs, batch_y)
+                            train_loss.append(seq_loss.item())
 
-                          loss = seq_loss + label_loss + enc_loss
-                  else:
-                      if args.output_attention:
-                          outputs, y_hat, x_label_one_hot, y_enc, yy_lable_one_hot = model(batch_x, dec_inp, batch_x_label, batch_y_label)[0]
-                      else:
-                          outputs, y_hat, x_label_one_hot, y_enc, yy_lable_one_hot = model(batch_x, dec_inp, batch_x_label, batch_y_label)    
+                            label_loss = loss_func(y_hat, x_label_one_hot)
+                            label_train_loss.append(label_loss.item())
 
-                      # 从 outputs 和 batch_y 中提取最后 pred_len 个时间步的数据。f_dim 的设置确保在不同特征类型下正确选择输出的维度。
-                      f_dim = -1 if args.features == 'MS' else 0
-                      outputs = outputs[:, -args.pred_len:, f_dim:]
-                      batch_y = batch_y[:, -args.pred_len:, f_dim:]
-                      
-                      # 计算三个损失
-                      # （1）输出序列的L1损失 
-                      seq_loss = criterion(outputs, batch_y)
-                      train_loss.append(seq_loss.item())
-                      # （2）输出序列的label损失
-                      label_loss = loss_func(y_hat, x_label_one_hot)
-                      label_train_loss.append(label_loss.item())
-                      # （3） 输入序列的label损失
-                      enc_loss = loss_func(y_enc, yy_lable_one_hot)
-                      enc_train_loss.append(enc_loss.item())
+                            enc_loss = loss_func(y_enc, yy_lable_one_hot)
+                            enc_train_loss.append(enc_loss.item())
 
-                      # 三个损失和
-                      loss = seq_loss + label_loss + enc_loss
-                      
-                  # 输出 第n*100个 iter的损失与损失和
-                  if (i + 1) % 100 == 0:
-                      accelerator.print(
-                          "\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
-                      accelerator.print(
-                          "\tseq_loss: {0:.7f}, label_loss: {1:.7f}, enc_loss: {2:.7f}".format(seq_loss, label_loss, enc_loss))
-                      speed = (time.time() - time_now) / iter_count
-                      left_time = speed * ((args.train_epochs - epoch) * train_steps - i)
-                      accelerator.print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
-                      iter_count = 0
-                      time_now = time.time()
+                            loss = seq_loss + label_loss + enc_loss
+                    else:
+                        if args.output_attention:
+                            outputs, y_hat, x_label_one_hot, y_enc, yy_lable_one_hot = model(batch_x, dec_inp, batch_x_label, batch_y_label)[0]
+                        else:
+                            outputs, y_hat, x_label_one_hot, y_enc, yy_lable_one_hot = model(batch_x, dec_inp, batch_x_label, batch_y_label)    
 
-                  if args.use_amp:
-                      scaler.scale(loss).backward()
-                      scaler.step(model_optim)
-                      scaler.update()
-                  else:
-                      accelerator.backward(loss)
-                      model_optim.step()
+                        # 从 outputs 和 batch_y 中提取最后 pred_len 个时间步的数据。f_dim 的设置确保在不同特征类型下正确选择输出的维度。
+                        f_dim = -1 if args.features == 'MS' else 0
+                        outputs = outputs[:, -args.pred_len:, f_dim:]
+                        batch_y = batch_y[:, -args.pred_len:, f_dim:]
+                        
+                        # 计算三个损失
+                        # （1）输出序列的L1损失 
+                        seq_loss = criterion(outputs, batch_y)
+                        train_loss.append(seq_loss.item())
+                        # （2）输出序列的label损失
+                        label_loss = loss_func(y_hat, x_label_one_hot)
+                        label_train_loss.append(label_loss.item())
+                        # （3） 输入序列的label损失
+                        enc_loss = loss_func(y_enc, yy_lable_one_hot)
+                        enc_train_loss.append(enc_loss.item())
 
-                  if args.lradj == 'TST':
-                      adjust_learning_rate(accelerator, model_optim, scheduler, epoch + 1, args, printout=False)
-                      scheduler.step()
+                        # 三个损失和
+                        loss = seq_loss + label_loss + enc_loss
+                        
+                    # 输出 第n*100个 iter的损失与损失和
+                    if (i + 1) % 100 == 0:
+                        accelerator.print(
+                            "\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
+                        accelerator.print(
+                            "\tseq_loss: {0:.7f}, label_loss: {1:.7f}, enc_loss: {2:.7f}".format(seq_loss, label_loss, enc_loss))
+                        speed = (time.time() - time_now) / iter_count
+                        left_time = speed * ((args.train_epochs - epoch) * train_steps - i)
+                        accelerator.print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
+                        iter_count = 0
+                        time_now = time.time()
+
+                    if args.use_amp:
+                        scaler.scale(loss).backward()
+                        scaler.step(model_optim)
+                        scaler.update()
+                    else:
+                        accelerator.backward(loss)
+                        model_optim.step()
+                
+
+                    if args.lradj == 'TST':
+                        adjust_learning_rate(accelerator, model_optim, scheduler, epoch + 1, args, printout=False)
+                        scheduler.step()
+
+              except Exception as e:
+                print("处理第{}个train_loader时发生异常".format(k))
+                continue      
 
             accelerator.print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             # train_loss = np.average(train_loss)
