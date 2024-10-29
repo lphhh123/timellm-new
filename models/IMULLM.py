@@ -9,6 +9,7 @@ from layers.Embed import PatchEmbedding
 import transformers
 # from layers.StandardNorm import Normalize
 from utils.IMUNormalizer import IMUNormalizer
+from layers.MYConv import MY_Conv,MY_DEConv
 from layers.mlp import MLP
 from layers.Embed import PositionalEmbedding
 import torch.nn.functional as F
@@ -39,8 +40,10 @@ class Model(nn.Module):
         super(Model, self).__init__()
         self.intime_len = configs.seq_len
         self.outtime_len = configs.pred_len
-        self.mlp_in = MLP((self.intime_len, 6), (self.intime_len, 1))
-        self.mlp_out = MLP((self.outtime_len, 1), (self.outtime_len, 6))
+        self.myConv = MY_Conv()
+        self.myDeConv = MY_DEConv()
+        # self.mlp_in = MLP((self.intime_len, 6), (self.intime_len, 1))
+        # self.mlp_out = MLP((self.outtime_len, 1), (self.outtime_len, 6))
 
         self.task_name = configs.task_name
         self.pred_len = configs.pred_len
@@ -58,8 +61,8 @@ class Model(nn.Module):
         self.positionEmbed = PositionalEmbedding(self.d_model)
 
         self.class_nums = 224
+        
         self.classifier = MLP(input_shape=(self.outtime_len, 6), output_shape=(self.outtime_len, self.class_nums))
-
         self.classifier_two = MLP(input_shape=(self.intime_len, 6), output_shape=(self.intime_len, self.class_nums))
 
         if configs.llm_model == 'LLAMA':
@@ -255,7 +258,8 @@ class Model(nn.Module):
         x_enc = self.normalize_layers(x_enc, 'norm')
 
         # mlp：[batchsize, T, 6]->[batchsize, T, 1]
-        x_enc = self.mlp_in(x_enc)
+        # x_enc = self.mlp_in(x_enc)
+        x_enc = self.myConv(x_enc)
 
         # 记录x_enc在mlp之后的维度
         B_1, T_1, N_1 = x_enc.size()
@@ -332,7 +336,9 @@ class Model(nn.Module):
 
         
         assert dec_out.shape[1] == self.outtime_len, "输入数据的时间步必须等于模型定义的时间步"
-        dec_out = self.mlp_out(dec_out)  # [batchsize, T, 1]->[batchsize, T, 6]
+        # [batchsize, T, 1]->[batchsize, T, 6]
+        # dec_out = self.mlp_out(dec_out)  
+        dec_out = self.myDeConv(dec_out)
 
         # 进行反归一化
         # dec_out.shape batch_size * T * 6
