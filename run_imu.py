@@ -13,12 +13,15 @@ import time
 import random
 import numpy as np
 import os
+
+from data_provider.data_prepare import data_prepare
+from data_provider.MyDateset import get_list, MyDateset
  
 
 if __name__ == "__main__":
 
     # 设置device列表
-    # os.environ["CUDA_VISIBLE_DEVICES"] = "7,8,9"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
     os.environ['CURL_CA_BUNDLE'] = ''
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:64"
 
@@ -44,8 +47,10 @@ if __name__ == "__main__":
     # data loader
     parser.add_argument('--data', type=str, required=True, default='IMU', help='dataset type')
     parser.add_argument('--root_path', type=str, default='./dataset/', help='path of the data file')
-    # parser.add_argument('--data_path', type=str, default='', help='data file')
     parser.add_argument('--label_dict', type=str, default='./dataset/label.json',help='path of the label_dict')
+    parser.add_argument('--data_dict', type=str, default='./dataset/data.json',help='path of the data.json')
+    parser.add_argument('--data_stride', type=int, required=True, default=16, help='the stride of dividing data')
+    # parser.add_argument('--data_path', type=str, default='', help='data file')
     parser.add_argument('--features', type=str, default='M',
                         help='forecasting task, options:[M, S, MS]; '
                              'M:multivariate predict multivariate, S: univariate predict univariate, '
@@ -130,6 +135,7 @@ if __name__ == "__main__":
             args.factor,
             args.embed,
             args.des, ii)
+
 
         # _, train_loader = data_provider(args, 'train')
         # _, vali_loader = data_provider(args, 'val')

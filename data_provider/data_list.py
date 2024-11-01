@@ -2,11 +2,11 @@ import json
 import random
 import os
 
-def data_list(args, seq_len, pred_len):
-  datajson_path = args.data_dict
+def data_list(data_dict, redivide_datasetlist):
+  datajson_path = data_dict
   # 是否需要重新打乱排序、重新生成train_list和test_list
   # 0：不需要；1：需要
-  if args.redivide_datasetlist == 1:
+  if redivide_datasetlist == 1:
       train_list, test_list = list_shuffling(datajson_path)
   else:
       with open(datajson_path, 'r') as f:

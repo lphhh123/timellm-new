@@ -136,21 +136,156 @@ def del_files(dir_path):
     shutil.rmtree(dir_path)
 
 
-def vali(args, accelerator, model, vali_loader, criterion):
-    loss_func = nn.CrossEntropyLoss()
+# def vali(args, accelerator, model, vali_loader, criterion):
+#     loss_func = nn.CrossEntropyLoss()
 
-    total_loss = []
-    label_total_loss = []
-    enc_total_loss = []
+#     total_loss = []
+#     label_total_loss = []
+#     enc_total_loss = []
+#     model.eval()
+#     with torch.no_grad():
+#         # for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in tqdm(enumerate(vali_loader)):
+#         for i, (batch_x, batch_y,batch_x_label, batch_y_label) in tqdm(enumerate(vali_loader)):
+#             batch_x = batch_x.float().to(accelerator.device)
+#             batch_y = batch_y.float().to(accelerator.device)
+
+#             # batch_x_mark = batch_x_mark.float().to(accelerator.device)
+#             # batch_y_mark = batch_y_mark.float().to(accelerator.device)
+#             batch_x_label = batch_x_label.float().to(accelerator.device)
+#             batch_y_label = batch_y_label.float().to(accelerator.device)
+
+#             # decoder input
+#             dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :]).float().to(accelerator.device)
+#             dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(accelerator.device)
+#             # encoder - decoder
+#             # if args.use_amp:
+#             #     with torch.cuda.amp.autocast():
+#             #         if args.output_attention:
+#             #             outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+#             #         else:
+#             #             outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+#             # else:
+#             #     if args.output_attention:
+#             #         outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+#             #     else:
+#             #         outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+#             if args.use_amp:
+#                 with torch.cuda.amp.autocast():
+#                     if args.output_attention:
+#                         outputs, y_hat, x_label_one_hot, y_enc, yy_lable_one_hot = model(batch_x, dec_inp, batch_x_label, batch_y_label)[0]
+#                     else:
+#                         outputs, y_hat, x_label_one_hot, y_enc, yy_lable_one_hot = model(batch_x, dec_inp, batch_x_label, batch_y_label)
+#             else:
+#                 if args.output_attention:
+#                     outputs, y_hat, x_label_one_hot, y_enc, yy_lable_one_hot = model(batch_x, dec_inp, batch_x_label, batch_y_label)[0]
+#                 else:
+#                     outputs, y_hat, x_label_one_hot, y_enc, yy_lable_one_hot = model(batch_x, dec_inp, batch_x_label, batch_y_label)
+#             # 使用 gather_for_metrics 方法将多个设备上的输出和目标收集到一起，以便进行后续的度量计算
+#             outputs, batch_y = accelerator.gather_for_metrics((outputs, batch_y))
+
+#             # 从 outputs 和 batch_y 中提取最后 pred_len 个时间步的数据。f_dim 的设置确保在不同特征类型下正确选择输出的维度。
+#             f_dim = -1 if args.features == 'MS' else 0
+#             outputs = outputs[:, -args.pred_len:, f_dim:]
+#             batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)   # 将 batch_y 移动到加速器设备上，以确保计算时的数据设备一致性。
+
+
+#             #  使用 .detach() 从计算图中分离预测和真实标签，以避免在损失计算时进行梯度计算。
+#             pred = outputs.detach()
+#             true = batch_y.detach()
+            
+#             # 输出序列的L1损失
+#             loss = criterion(pred, true)
+#             total_loss.append(loss.item())
+#             # 输出序列的label损失
+#             label_loss = loss_func(y_hat, x_label_one_hot)
+#             label_total_loss.append(label_loss.item())
+#             # 输入序列的label损失
+#             enc_loss = loss_func(y_enc, yy_lable_one_hot)
+#             enc_total_loss.append(enc_loss.item())
+
+#             # mae_loss = mae_metric(pred, true)
+#             # total_mae_loss.append(mae_loss.item())
+#     avg_loss = np.average(total_loss)
+#     avg_label_loss = np.average(label_total_loss)
+#     avg_enc_total_loss = np.average(enc_total_loss)
+#     total_loss = avg_loss + avg_label_loss + avg_enc_total_loss
+    
+#     # total_mae_loss = np.average(total_mae_loss)
+
+#     model.train()
+#     # return total_loss, total_mae_loss
+#     return total_loss, avg_loss, avg_label_loss, avg_enc_total_loss
+
+
+def test(args, accelerator, model, train_loader, vali_loader, criterion):
+    x, _ = train_loader.dataset.last_insample_window()
+    y = vali_loader.dataset.timeseries
+    x = torch.tensor(x, dtype=torch.float32).to(accelerator.device)
+    x = x.unsqueeze(-1)
+
+    model.eval()
+    with torch.no_grad():
+        B, _, C = x.shape
+        dec_inp = torch.zeros((B, args.pred_len, C)).float().to(accelerator.device)
+        dec_inp = torch.cat([x[:, -args.label_len:, :], dec_inp], dim=1)
+        outputs = torch.zeros((B, args.pred_len, C)).float().to(accelerator.device)
+        id_list = np.arange(0, B, args.eval_batch_size)
+        id_list = np.append(id_list, B)
+        for i in range(len(id_list) - 1):
+            outputs[id_list[i]:id_list[i + 1], :, :] = model(
+                x[id_list[i]:id_list[i + 1]],
+                None,
+                dec_inp[id_list[i]:id_list[i + 1]],
+                None
+            )
+        accelerator.wait_for_everyone()
+        outputs = accelerator.gather_for_metrics(outputs)
+        f_dim = -1 if args.features == 'MS' else 0
+        outputs = outputs[:, -args.pred_len:, f_dim:]
+        pred = outputs
+        true = torch.from_numpy(np.array(y)).to(accelerator.device)
+        batch_y_mark = torch.ones(true.shape).to(accelerator.device)
+        true = accelerator.gather_for_metrics(true)
+        batch_y_mark = accelerator.gather_for_metrics(batch_y_mark)
+
+        loss = criterion(x[:, :, 0], args.frequency_map, pred[:, :, 0], true, batch_y_mark)
+
+    model.train()
+    return loss
+
+
+def load_content(args):
+    # if 'ETT' in args.data:
+    #     file = 'ETT'
+    # else:
+    #     file = args.data
+
+    # temp_data = os.path.join('IMU.txt')
+    # temp_data = 'IMU.txt'
+    # with open(temp_data, 'r', encoding='utf-8') as f:
+    #     content = f.read()
+    content = 'Inertial measurement unit (IMU) is a device that measures the three-axis attitude angle (or angular velocity) and acceleration of an object.Generally, an IMU is equipped with three-axis gyroscopes and accelerometers in three directions to measure the angular velocity and acceleration of an object in three-dimensional space, and to calculate the object\'s attitude based on this.'
+    return content
+
+
+
+
+def vali(args, accelerator, model, vali_loader):
+    loss_MSE = nn.MSELoss()
+    loss_L1 = nn.L1Loss()
+    loss_CE = nn.CrossEntropyLoss()
+
+    out_MSEloss = []
+    out_L1loss = []
+    out_label_CEloss = []
+    in_label_CEloss = []
+
     model.eval()
     with torch.no_grad():
         # for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in tqdm(enumerate(vali_loader)):
         for i, (batch_x, batch_y,batch_x_label, batch_y_label) in tqdm(enumerate(vali_loader)):
             batch_x = batch_x.float().to(accelerator.device)
             batch_y = batch_y.float().to(accelerator.device)
-
-            # batch_x_mark = batch_x_mark.float().to(accelerator.device)
-            # batch_y_mark = batch_y_mark.float().to(accelerator.device)
             batch_x_label = batch_x_label.float().to(accelerator.device)
             batch_y_label = batch_y_label.float().to(accelerator.device)
 
@@ -193,76 +328,23 @@ def vali(args, accelerator, model, vali_loader, criterion):
             pred = outputs.detach()
             true = batch_y.detach()
             
-            # 输出序列的L1损失
-            loss = criterion(pred, true)
-            total_loss.append(loss.item())
-            # 输出序列的label损失
-            label_loss = loss_func(y_hat, x_label_one_hot)
-            label_total_loss.append(label_loss.item())
-            # 输入序列的label损失
-            enc_loss = loss_func(y_enc, yy_lable_one_hot)
-            enc_total_loss.append(enc_loss.item())
 
-            # mae_loss = mae_metric(pred, true)
-            # total_mae_loss.append(mae_loss.item())
-    avg_loss = np.average(total_loss)
-    avg_label_loss = np.average(label_total_loss)
-    avg_enc_total_loss = np.average(enc_total_loss)
-    total_loss = avg_loss + avg_label_loss + avg_enc_total_loss
+            out_seq_MSEloss = loss_MSE(pred, true)
+            out_MSEloss.append(out_seq_MSEloss.item())
+            out_seq_L1loss = loss_L1(pred, true)
+            out_L1loss.append(out_seq_L1loss.item())
+            out_label_loss = loss_CE(y_hat, x_label_one_hot)
+            out_label_CEloss.append(out_label_loss.item())
+            in_label_loss = loss_CE(y_enc, yy_lable_one_hot)
+            in_label_CEloss.append(in_label_loss.item())
+          
+
+    avg_MSEloss = np.average(out_MSEloss)
+    avg_L1loss = np.average(out_L1loss)
+    avg_outlabel_loss = np.average(out_label_CEloss)
+    avg_inlabel_loss = np.average(in_label_loss)
+    total_loss = avg_L1loss + avg_label_loss + avg_enc_total_loss
+
+    model.train()
     
-    # total_mae_loss = np.average(total_mae_loss)
-
-    model.train()
-    # return total_loss, total_mae_loss
-    return total_loss, avg_loss, avg_label_loss, avg_enc_total_loss
-
-
-def test(args, accelerator, model, train_loader, vali_loader, criterion):
-    x, _ = train_loader.dataset.last_insample_window()
-    y = vali_loader.dataset.timeseries
-    x = torch.tensor(x, dtype=torch.float32).to(accelerator.device)
-    x = x.unsqueeze(-1)
-
-    model.eval()
-    with torch.no_grad():
-        B, _, C = x.shape
-        dec_inp = torch.zeros((B, args.pred_len, C)).float().to(accelerator.device)
-        dec_inp = torch.cat([x[:, -args.label_len:, :], dec_inp], dim=1)
-        outputs = torch.zeros((B, args.pred_len, C)).float().to(accelerator.device)
-        id_list = np.arange(0, B, args.eval_batch_size)
-        id_list = np.append(id_list, B)
-        for i in range(len(id_list) - 1):
-            outputs[id_list[i]:id_list[i + 1], :, :] = model(
-                x[id_list[i]:id_list[i + 1]],
-                None,
-                dec_inp[id_list[i]:id_list[i + 1]],
-                None
-            )
-        accelerator.wait_for_everyone()
-        outputs = accelerator.gather_for_metrics(outputs)
-        f_dim = -1 if args.features == 'MS' else 0
-        outputs = outputs[:, -args.pred_len:, f_dim:]
-        pred = outputs
-        true = torch.from_numpy(np.array(y)).to(accelerator.device)
-        batch_y_mark = torch.ones(true.shape).to(accelerator.device)
-        true = accelerator.gather_for_metrics(true)
-        batch_y_mark = accelerator.gather_for_metrics(batch_y_mark)
-
-        loss = criterion(x[:, :, 0], args.frequency_map, pred[:, :, 0], true, batch_y_mark)
-
-    model.train()
-    return loss
-
-
-def load_content(args):
-    if 'ETT' in args.data:
-        file = 'ETT'
-    else:
-        file = args.data
-
-    # temp_data = os.path.join('IMU.txt')
-    # temp_data = 'IMU.txt'
-    # with open(temp_data, 'r', encoding='utf-8') as f:
-    #     content = f.read()
-    content = 'Inertial measurement unit (IMU) is a device that measures the three-axis attitude angle (or angular velocity) and acceleration of an object.Generally, an IMU is equipped with three-axis gyroscopes and accelerometers in three directions to measure the angular velocity and acceleration of an object in three-dimensional space, and to calculate the object\'s attitude based on this.'
-    return content
+    return total_loss, avg_MSEloss, avg_L1loss, avg_outlabel_loss, avg_inlabel_loss

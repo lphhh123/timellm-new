@@ -9,7 +9,6 @@ from layers.Embed import PatchEmbedding
 import transformers
 # from layers.StandardNorm import Normalize
 from utils.IMUNormalizer import IMUNormalizer
-from layers.MYConv import MY_Conv,MY_DEConv
 from layers.mlp import MLP
 from layers.Embed import PositionalEmbedding
 import torch.nn.functional as F
@@ -40,10 +39,8 @@ class Model(nn.Module):
         super(Model, self).__init__()
         self.intime_len = configs.seq_len
         self.outtime_len = configs.pred_len
-        self.myConv = MY_Conv()
-        self.myDeConv = MY_DEConv()
-        # self.mlp_in = MLP((self.intime_len, 6), (self.intime_len, 1))
-        # self.mlp_out = MLP((self.outtime_len, 1), (self.outtime_len, 6))
+        self.mlp_in = MLP((self.intime_len, 6), (self.intime_len, 1))
+        self.mlp_out = MLP((self.outtime_len, 1), (self.outtime_len, 6))
 
         self.task_name = configs.task_name
         self.pred_len = configs.pred_len
@@ -54,15 +51,15 @@ class Model(nn.Module):
         self.patch_len = configs.patch_len
         self.stride = configs.stride
         self.label_dict = configs.label_dict
-        self.gpt2_path = configs.gpt2_path
+        self.llm_path = configs.llm_path
         self.d_model = configs.d_model
         # self.normalize_layers = Normalize(configs.enc_in, affine=False)
         self.normalize_layers = IMUNormalizer(configs.enc_in, affine=False)
         self.positionEmbed = PositionalEmbedding(self.d_model)
 
         self.class_nums = 224
-        
         self.classifier = MLP(input_shape=(self.outtime_len, 6), output_shape=(self.outtime_len, self.class_nums))
+
         self.classifier_two = MLP(input_shape=(self.intime_len, 6), output_shape=(self.intime_len, self.class_nums))
 
         if configs.llm_model == 'LLAMA':
@@ -106,14 +103,14 @@ class Model(nn.Module):
                     local_files_only=False
                 )
         elif configs.llm_model == 'GPT2':
-            self.gpt2_config = GPT2Config.from_pretrained(self.gpt2_path)
+            self.gpt2_config = GPT2Config.from_pretrained(self.llm_path)
 
             self.gpt2_config.num_hidden_layers = configs.llm_layers
             self.gpt2_config.output_attentions = True
             self.gpt2_config.output_hidden_states = True
             try:
                 self.llm_model = GPT2Model.from_pretrained(
-                    self.gpt2_path,
+                    self.llm_path,
                     trust_remote_code=True,
                     local_files_only=True,
                     config=self.gpt2_config,
@@ -121,7 +118,7 @@ class Model(nn.Module):
             except EnvironmentError:  # downloads model from HF is not already done
                 print("Local model files not found. Attempting to download...")
                 self.llm_model = GPT2Model.from_pretrained(
-                    self.gpt2_path,
+                    self.llm_path,
                     trust_remote_code=True,
                     local_files_only=False,
                     config=self.gpt2_config,
@@ -129,14 +126,14 @@ class Model(nn.Module):
 
             try:
                 self.tokenizer = GPT2Tokenizer.from_pretrained(
-                    self.gpt2_path,
+                    self.llm_path,
                     trust_remote_code=True,
                     local_files_only=True
                 )
             except EnvironmentError:  # downloads the tokenizer from HF if not already done
                 print("Local tokenizer files not found. Atempting to download them..")
                 self.tokenizer = GPT2Tokenizer.from_pretrained(
-                    self.gpt2_path,
+                    self.llm_path,
                     trust_remote_code=True,
                     local_files_only=False
                 )
@@ -258,8 +255,7 @@ class Model(nn.Module):
         x_enc = self.normalize_layers(x_enc, 'norm')
 
         # mlp：[batchsize, T, 6]->[batchsize, T, 1]
-        # x_enc = self.mlp_in(x_enc)
-        x_enc = self.myConv(x_enc)
+        x_enc = self.mlp_in(x_enc)
 
         # 记录x_enc在mlp之后的维度
         B_1, T_1, N_1 = x_enc.size()
@@ -336,9 +332,7 @@ class Model(nn.Module):
 
         
         assert dec_out.shape[1] == self.outtime_len, "输入数据的时间步必须等于模型定义的时间步"
-        # [batchsize, T, 1]->[batchsize, T, 6]
-        # dec_out = self.mlp_out(dec_out)  
-        dec_out = self.myDeConv(dec_out)
+        dec_out = self.mlp_out(dec_out)  # [batchsize, T, 1]->[batchsize, T, 6]
 
         # 进行反归一化
         # dec_out.shape batch_size * T * 6

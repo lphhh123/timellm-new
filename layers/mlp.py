@@ -31,7 +31,8 @@ class MLP(nn.Module):
         # self.classifier.to(self.device)
 
     def forward(self, x):
-        x = x.view(x.size(0), -1)
+        # x = x.view(x.size(0), -1)
+        x = x.reshape(x.size(0), -1)
         x = self.classifier(x)
 
         return x.view(x.size(0), self.output_shape[0], self.output_shape[1])
@@ -40,19 +41,19 @@ class MLP(nn.Module):
         
 
 
-def main():
-    input_shape = (8, 6)
-    output_shape = (8, 1)
-    classifier = MLP(output_shape, input_shape)
+# def main():
+#     input_shape = (8, 6)
+#     output_shape = (8, 1)
+#     classifier = MLP(output_shape, input_shape)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    features = torch.randn(128, 8, 1).to(device)
+#     features = torch.randn(128, 8, 1).to(device)
 
-    outputs = classifier(features)
+#     outputs = classifier(features)
 
-    print("outputs shape:", outputs.shape)
+#     print("outputs shape:", outputs.shape)
 
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()
