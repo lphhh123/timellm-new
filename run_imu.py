@@ -8,14 +8,14 @@ from tqdm import tqdm
 
 from models import Autoformer, DLinear, TimeLLM, IMULLM
 
-from data_provider.data_factory import data_provider, get_session
+from data_provider.data_factory import get_session
 import time
 import random
 import numpy as np
 import os
 
-from data_provider.data_prepare import data_prepare
-from data_provider.MyDateset import get_list, MyDateset
+# from data_provider.data_prepare import data_prepare
+# from data_provider.MyDateset import get_list, MyDateset
  
 
 if __name__ == "__main__":
@@ -46,10 +46,10 @@ if __name__ == "__main__":
 
     # data loader
     parser.add_argument('--data', type=str, required=True, default='IMU', help='dataset type')
-    parser.add_argument('--root_path', type=str, default='./dataset/', help='path of the data file')
+    parser.add_argument('--root_path', type=str, default='./dataset/ClassifiedTestTrain/', help='path of the data file')
     parser.add_argument('--label_dict', type=str, default='./dataset/label.json',help='path of the label_dict')
     parser.add_argument('--data_dict', type=str, default='./dataset/data.json',help='path of the data.json')
-    parser.add_argument('--data_stride', type=int, required=True, default=16, help='the stride of dividing data')
+    # parser.add_argument('--data_stride', type=int, required=True, default=16, help='the stride of dividing data')
     # parser.add_argument('--data_path', type=str, default='', help='data file')
     parser.add_argument('--features', type=str, default='M',
                         help='forecasting task, options:[M, S, MS]; '
@@ -89,7 +89,8 @@ if __name__ == "__main__":
     parser.add_argument('--prompt_domain', type=int, default=0, help='')
     parser.add_argument('--llm_model', type=str, default='GPT2', help='LLM model') # LLAMA, GPT2, BERT
     parser.add_argument('--llm_dim', type=int, default='768', help='LLM model dimension')# LLama7b:4096; GPT2-small:768; BERT-base:768
-    parser.add_argument('--gpt2_path', type=str, default='./gpt2', help='path of gpt2')
+    # parser.add_argument('--gpt2_path', type=str, default='./gpt2', help='path of gpt2')
+    parser.add_argument('--llm_path', type=str, default='./gpt2', help='path of gpt2')
 
 
     # optimization
