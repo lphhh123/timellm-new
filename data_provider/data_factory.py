@@ -1,6 +1,7 @@
 from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4, Dataset_IMU
 from torch.utils.data import DataLoader
 import os
+import random
 
 data_dict = {
     'ETTh1': Dataset_ETT_hour,
@@ -111,11 +112,10 @@ def get_session(args, flag):
     file_list = [f for f in file_list if os.path.isfile(os.path.join(dict_path, f))]
     data_list = []
     loader_list = []
+    random.shuffle(file_list)
     for f in file_list:
-        # path = os.path.join(dict_path, f)
         test_data, test_loader = imudata_provider(args, f, flag)
         data_list.append(test_data)
         loader_list.append(test_loader)
-        data_list.append(test_data)
 
     return data_list, loader_list
